@@ -424,7 +424,7 @@ extractDefineOrLetName AlexInput{aiPtr} n =
     start#      = (goBack# (end# `plusAddr#` -1#)) `plusAddr#` 1#
 
     goBack# :: Addr# -> Addr#
-    goBack# ptr# = case indexWord8OffAddr# ptr# 0# of
+    goBack# ptr# = case word8ToWord# (indexWord8OffAddr# ptr# 0#) of
         0##  -> ptr#
         9##  -> ptr# -- '\n'
         10## -> ptr# -- '\n'
@@ -470,7 +470,7 @@ alexInputPrevChar AlexInput{ aiPtr = Ptr ptr# } =
         _  -> '\0' -- Invalid!
     where
     ch0 :: Int#
-    !ch0 = word2Int# (indexWord8OffAddr# start# 0#)
+    !ch0 = word2Int# (word8ToWord# (indexWord8OffAddr# start# 0#))
 
     base# = findCharStart ptr# `plusAddr#` -1#
 
@@ -483,7 +483,7 @@ alexInputPrevChar AlexInput{ aiPtr = Ptr ptr# } =
         | otherwise
         = p#
         where
-        w# = word2Int# (indexWord8OffAddr# p# 0#)
+        w# = word2Int# (word8ToWord# (indexWord8OffAddr# p# 0#))
 
 {-# INLINE alexGetByte #-}
 alexGetByte :: AlexInput -> Maybe (Word8, AlexInput)
@@ -501,7 +501,7 @@ alexGetByte input@AlexInput{aiPtr} =
                         input { aiPtr = cs }
                 c    -> Just (b, input')
                     where
-                    !b     = W8# c
+                    !b     = W8# (wordToWord8# c)
                     !input' =
                         over aiLineLengthL (+ I# n) $
                         input { aiPtr = cs }
@@ -602,7 +602,7 @@ dropUntilNL# :: Ptr Word8 -> Ptr Word8
 dropUntilNL# (Ptr start#) = Ptr (go start#)
     where
     go :: Addr# -> Addr#
-    go ptr# = case indexWord8OffAddr# ptr# 0# of
+    go ptr# = case word8ToWord# (indexWord8OffAddr# ptr# 0#) of
         0##  -> ptr#
         10## -> ptr# -- '\n'
         _    -> go (ptr# `plusAddr#` 1#)
@@ -612,13 +612,13 @@ dropUntilUnescapedNL# :: Ptr Word8 -> (# Int, Ptr Word8 #)
 dropUntilUnescapedNL# (Ptr start#) = go 0 start#
     where
     go :: Int -> Addr# -> (# Int, Ptr Word8 #)
-    go !n ptr# = case indexWord8OffAddr# ptr# 0# of
+    go !n ptr# = case word8ToWord# (indexWord8OffAddr# ptr# 0#) of
         0##  -> (# n, Ptr ptr# #)
         -- '\n'
         10## -> (# n, Ptr ptr# #)
         -- '\\'
         92## ->
-            case indexWord8OffAddr# ptr# 1# of
+            case word8ToWord# (indexWord8OffAddr# ptr# 1#) of
                 0##  -> (# n, Ptr (ptr# `plusAddr#` 1#) #)
                 -- '\n'
                 10## -> go (n + 1) (ptr# `plusAddr#` 2#)
@@ -630,23 +630,23 @@ dropUntilNLOr# :: Word8 -> Ptr Word8 -> Ptr Word8
 dropUntilNLOr# (W8# w#) (Ptr start#) = Ptr (go start#)
     where
     go :: Addr# -> Addr#
-    go ptr# = case indexWord8OffAddr# ptr# 0# of
+    go ptr# = case word8ToWord# (indexWord8OffAddr# ptr# 0#) of
         0##  -> ptr#
         -- '\n'
         10## -> ptr#
-        c# | isTrue# (c# `eqWord#` w#) -> ptr#
-           | otherwise                 -> go (ptr# `plusAddr#` 1#)
+        c# | isTrue# (c# `eqWord#` word8ToWord# w#) -> ptr#
+           | otherwise                              -> go (ptr# `plusAddr#` 1#)
 
 {-# INLINE dropUntilNLOrEither# #-}
 dropUntilNLOrEither# :: Word8 -> Word8 -> Ptr Word8 -> Ptr Word8
 dropUntilNLOrEither# (W8# w1#) (W8# w2#) (Ptr start#) = Ptr (go start#)
     where
     go :: Addr# -> Addr#
-    go ptr# = case indexWord8OffAddr# ptr# 0# of
+    go ptr# = case word8ToWord# (indexWord8OffAddr# ptr# 0#) of
         0##  -> ptr#
         -- '\n'
         10## -> ptr#
-        c# | isTrue# ((c# `eqWord#` w1#) `orI#` (c# `eqWord#` w2#))
+        c# | isTrue# ((c# `eqWord#` word8ToWord# w1#) `orI#` (c# `eqWord#` word8ToWord# w2#))
            -> ptr#
            | otherwise
            -> go (ptr# `plusAddr#` 1#)
@@ -700,7 +700,7 @@ regionToUtf8BS start end =
 {-# INLINE utf8DecodeChar# #-}
 utf8DecodeChar# :: Addr# -> (# Char#, Int# #)
 utf8DecodeChar# a# =
-    case indexWord8OffAddr# a# 0# of
+    case word8ToWord# (indexWord8OffAddr# a# 0#) of
         0## -> (# '\0'#, 0# #)
         !x# ->
             let !ch0 = word2Int# x# in
@@ -723,7 +723,7 @@ invalid# nBytes# = (# '\8'#, nBytes# #)
 {-# INLINE readChar1# #-}
 readChar1# :: Addr# -> Int# -> (# Char#, Int# #)
 readChar1# a# ch0 =
-    let !ch1 = word2Int# (indexWord8OffAddr# a# 1#) in
+    let !ch1 = word2Int# (word8ToWord# (indexWord8OffAddr# a# 1#)) in
     if noValidUtf8Cont# ch1 then invalid# 1# else
     (# chr# (((ch0 `andI#` 0x3F#) `uncheckedIShiftL#` 6#) `orI#`
               (ch1 `andI#` 0x7F#)),
@@ -732,9 +732,9 @@ readChar1# a# ch0 =
 {-# INLINE readChar2# #-}
 readChar2# :: Addr# -> Int# -> (# Char#, Int# #)
 readChar2# a# ch0 =
-    let !ch1 = word2Int# (indexWord8OffAddr# a# 1#) in
+    let !ch1 = word2Int# (word8ToWord# (indexWord8OffAddr# a# 1#)) in
     if noValidUtf8Cont# ch1 then invalid# 1# else
-    let !ch2 = word2Int# (indexWord8OffAddr# a# 2#) in
+    let !ch2 = word2Int# (word8ToWord# (indexWord8OffAddr# a# 2#)) in
     if noValidUtf8Cont# ch2 then invalid# 2# else
     (# chr# (((ch0 `andI#` 0x1F#) `uncheckedIShiftL#` 12#) `orI#`
              ((ch1 `andI#` 0x7F#) `uncheckedIShiftL#` 6#)  `orI#`
@@ -744,11 +744,11 @@ readChar2# a# ch0 =
 {-# INLINE readChar3# #-}
 readChar3# :: Addr# -> Int# -> (# Char#, Int# #)
 readChar3# a# ch0 =
-    let !ch1 = word2Int# (indexWord8OffAddr# a# 1#) in
+    let !ch1 = word2Int# (word8ToWord# (indexWord8OffAddr# a# 1#)) in
     if noValidUtf8Cont# ch1 then invalid# 1# else
-    let !ch2 = word2Int# (indexWord8OffAddr# a# 2#) in
+    let !ch2 = word2Int# (word8ToWord# (indexWord8OffAddr# a# 2#)) in
     if noValidUtf8Cont# ch2 then invalid# 2# else
-    let !ch3 = word2Int# (indexWord8OffAddr# a# 3#) in
+    let !ch3 = word2Int# (word8ToWord# (indexWord8OffAddr# a# 3#)) in
     if noValidUtf8Cont# ch3 then invalid# 3# else
     (# chr# (((ch0 `andI#` 0x0F#) `uncheckedIShiftL#` 18#) `orI#`
              ((ch1 `andI#` 0x7F#) `uncheckedIShiftL#` 12#) `orI#`
@@ -783,7 +783,7 @@ startsWith11110# x = isTrue# ((x `andI#` 0xF8#) ==# 0xF0#)
 {-# INLINE utf8SizeChar# #-}
 utf8SizeChar# :: Addr# -> Int#
 utf8SizeChar# a# =
-    case indexWord8OffAddr# a# 0# of
+    case word8ToWord# (indexWord8OffAddr# a# 0#) of
         0## -> 0#
         !x# ->
             let !ch0 = word2Int# x# in
